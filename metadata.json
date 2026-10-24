@@ -1,0 +1,6 @@
+{
+  "name": "MediaVault & News",
+  "description": "A clean, responsive single-page web app for media storage, photo and video gallery, and news publishing with mobile burger menu and touch-friendly interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
