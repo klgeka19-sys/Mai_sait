@@ -3656,11 +3656,6 @@
           </span>
         </div>
 
-        <!-- 16:9 Responsive Player Container -->
-        <div class="youtube-player-wrap" id="youtube-player-wrap">
-          <iframe id="youtube-iframe" src="https://www.youtube-nocookie.com/embed/kJQP7kiw5Fk?autoplay=0&rel=0" title="YouTube video player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-        </div>
-
         <!-- Quick Category Search Chips -->
         <div style="margin-top: 1rem;">
           <div style="font-size: 0.75rem; font-weight: 700; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem;" data-i18n="youtubeQuickTopics">
@@ -3680,18 +3675,20 @@
           </div>
         </div>
 
-        <!-- Interactive Search Results Grid -->
+        <!-- Search Results Header -->
         <div class="yt-results-header">
           <span data-i18n="youtubeSearchModeTitle">Search Results & Video Library</span>
           <span id="yt-results-count" style="font-weight: 700; text-transform: none; color: var(--color-primary); font-size: 0.8125rem;"></span>
         </div>
-        <div class="yt-results-grid" id="yt-results-grid">
-          <!-- Rendered dynamically via JavaScript -->
+
+        <!-- Target Container: youtube-results-container -->
+        <div id="youtube-results-container" class="youtube-results-container">
+          <!-- Dynamically generated iframe and video results -->
         </div>
       </div>
-      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <span style="font-size: 0.75rem; color: var(--color-text-subtle);">
-          Powered by YouTube Embedded Search API
+          YouTube Web Player & Search • Без API-ключей
         </span>
         <button type="button" class="btn btn-secondary" id="close-youtube-footer-btn">
           <span data-i18n="closeBtn">Close</span>
@@ -4944,13 +4941,13 @@
       const directId = parseYouTubeUrl(trimmed) || (trimmed.length === 11 && !/\s/.test(trimmed) ? trimmed : null);
       if (directId) {
         return {
-          url: `https://www.youtube-nocookie.com/embed/${directId}?autoplay=1&rel=0`,
+          url: `https://youtube.com/embed/${directId}?autoplay=1&rel=0`,
           isDirectVideo: true,
           videoId: directId
         };
       }
       return {
-        url: `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(trimmed)}&autoplay=1&rel=0`,
+        url: `https://youtube.com/embed?listType=search&list=${encodeURIComponent(trimmed || "музыка")}&autoplay=1&rel=0`,
         isDirectVideo: false,
         query: trimmed
       };
@@ -4966,14 +4963,17 @@
       });
     }
 
-    window.executeYouTubeSearch = function(queryOrUrl, autoPlay = true, titleOverride = "") {
+    // ==========================================================================
+    // Fully rewritten searchYouTube function (No API keys needed, generates iframe inside youtube-results-container)
+    // ==========================================================================
+    window.searchYouTube = function(queryOrUrl, autoPlay = true, titleOverride = "") {
       const searchInput = document.getElementById("youtube-search-input");
       const clearBtn = document.getElementById("youtube-clear-btn");
       const bannerText = document.getElementById("youtube-banner-text");
       const bannerBadge = document.getElementById("youtube-banner-badge");
-      const iframe = document.getElementById("youtube-iframe");
+      const container = document.getElementById("youtube-results-container");
 
-      const query = (queryOrUrl || "").trim();
+      const query = (queryOrUrl !== undefined && queryOrUrl !== null ? String(queryOrUrl) : (searchInput?.value || "")).trim();
       if (searchInput && searchInput.value !== query) {
         searchInput.value = query;
       }
@@ -4983,34 +4983,93 @@
 
       currentYouTubeQuery = query;
 
-      if (!query) {
-        // Render all trending videos
-        if (bannerText) bannerText.textContent = "YouTube: Популярные видео и тренды";
-        if (bannerBadge) bannerBadge.textContent = "Каталог";
-        renderYouTubeSearchResults(YOUTUBE_CATALOG, "");
-        return;
-      }
+      const embedInfo = getYouTubeSearchEmbedUrl(query || "музыка хиты");
+      const isDirect = embedInfo.isDirectVideo;
+      const activeVideoId = embedInfo.videoId || "kJQP7kiw5Fk";
 
-      const embedInfo = getYouTubeSearchEmbedUrl(query);
-      if (iframe && autoPlay) {
-        iframe.src = embedInfo.url;
-      }
-
-      if (embedInfo.isDirectVideo) {
+      if (isDirect) {
         currentActiveVideoId = embedInfo.videoId;
         currentActiveVideoTitle = titleOverride || `YouTube Video (${embedInfo.videoId})`;
         if (bannerText) bannerText.textContent = currentActiveVideoTitle;
         if (bannerBadge) bannerBadge.textContent = "Видео";
       } else {
         currentActiveVideoId = "";
-        currentActiveVideoTitle = titleOverride || `Поиск: "${query}"`;
+        currentActiveVideoTitle = titleOverride || (query ? `Поиск: «${query}»` : "YouTube: Популярные видео");
         if (bannerText) bannerText.textContent = currentActiveVideoTitle;
         if (bannerBadge) bannerBadge.textContent = "Поиск";
       }
 
-      // Filter catalog cards
-      const results = searchYouTubeCatalog(query);
-      renderYouTubeSearchResults(results, query);
+      // Filter catalog cards or fallback to all catalog items so it's NEVER empty
+      let results = searchYouTubeCatalog(query);
+      if (results.length === 0) {
+        results = YOUTUBE_CATALOG; // Fallback so results are never empty
+      }
+
+      const countLabel = document.getElementById("yt-results-count");
+      if (countLabel) {
+        countLabel.textContent = `${results.length} ${t("youtubeSearchResultsCount") || "видео"}`;
+      }
+
+      // Generate iframe inside youtube-results-container with https://youtube.com structure!
+      if (container) {
+        const encodedQ = encodeURIComponent(query || "музыка");
+        const directYtWebUrl = isDirect ? `https://youtube.com/watch?v=${activeVideoId}` : `https://youtube.com/results?search_query=${encodedQ}`;
+
+        container.innerHTML = `
+          <!-- Generated YouTube IFrame Player -->
+          <div class="youtube-player-wrap" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: var(--radius-md); overflow: hidden; margin-bottom: 0.75rem; box-shadow: var(--shadow-lg);">
+            <iframe id="youtube-iframe" src="${embedInfo.url}" title="YouTube search player" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
+          </div>
+
+          <!-- Direct YouTube.com Action Bar -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; padding: 0.5rem 0.75rem; background: #f8fafc; border: 1px solid var(--color-border); border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; font-weight: 600; color: var(--color-text-main); min-width: 0;">
+              <span style="color: #FF0000; flex-shrink: 0;">▶</span>
+              <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(currentActiveVideoTitle)}</span>
+            </div>
+            <a href="${directYtWebUrl}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.75rem; padding: 0.25rem 0.65rem; text-decoration: none; flex-shrink: 0;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="#FF0000"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+              <span>Открыть на YouTube.com ↗</span>
+            </a>
+          </div>
+
+          <!-- Video Catalog Grid with 1-tap play and gallery saving -->
+          <div class="yt-results-grid" id="yt-results-grid">
+            ${results.map(item => {
+              const isCurrent = currentActiveVideoId === item.id;
+              return `
+                <div class="yt-card ${isCurrent ? 'active' : ''}" data-video-id="${item.id}">
+                  <div class="yt-card-thumb-wrap" onclick="window.playCatalogVideo('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')">
+                    <img class="yt-card-thumb" src="https://img.youtube.com/vi/${item.id}/hqdefault.jpg" alt="${escapeHtml(item.title)}" loading="lazy">
+                    <span class="yt-card-duration">${escapeHtml(item.duration)}</span>
+                    <div class="yt-card-play-overlay">
+                      <span class="yt-card-play-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="yt-card-body">
+                    <div class="yt-card-title" onclick="window.playCatalogVideo('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')" title="${escapeHtml(item.title)}">
+                      ${escapeHtml(item.title)}
+                    </div>
+                    <div class="yt-card-channel">${escapeHtml(item.channel)} &bull; ${escapeHtml(item.category)}</div>
+                    <div class="yt-card-footer">
+                      <button type="button" class="yt-card-btn-watch" onclick="window.playCatalogVideo('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
+                        <span>${escapeHtml(t("youtubePlayNow") || "Смотреть")}</span>
+                      </button>
+                      <button type="button" class="yt-card-btn-save" onclick="window.saveCatalogVideoToGallery('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')" title="${escapeHtml(t("saveToGalleryBtn"))}">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                        <span>${escapeHtml(t("youtubeSaveSearchBtn") || "+ В галерею")}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `;
+      }
 
       // Highlight active category chip if matching
       document.querySelectorAll("#youtube-category-chips button").forEach(btn => {
@@ -5019,73 +5078,15 @@
       });
     };
 
-    function renderYouTubeSearchResults(videos, query) {
-      const grid = document.getElementById("yt-results-grid");
-      const countLabel = document.getElementById("yt-results-count");
-      if (!grid) return;
-
-      if (countLabel) {
-        countLabel.textContent = `${videos.length} ${t("youtubeSearchResultsCount") || "видео"}`;
-      }
-
-      if (videos.length === 0) {
-        grid.innerHTML = `
-          <div style="grid-column: 1 / -1; padding: 2rem 1rem; text-align: center; background: #fff; border-radius: var(--radius-md); border: 1px dashed var(--color-border);">
-            <div style="font-size: 2rem; margin-bottom: 0.5rem;">&#128269;</div>
-            <div style="font-weight: 700; margin-bottom: 0.25rem;">По запросу «${escapeHtml(query)}» ничего не найдено в каталоге</div>
-            <p style="font-size: 0.8125rem; color: var(--color-text-muted); margin-bottom: 1rem;">
-              Однако плеер выше уже транслирует результаты глобального поиска YouTube по этому запросу!
-            </p>
-            <button type="button" class="btn btn-secondary btn-sm" onclick="window.executeYouTubeSearch('')">
-              ${escapeHtml(t("youtubeClearSearch") || "Показать все видео")}
-            </button>
-          </div>
-        `;
-        return;
-      }
-
-      grid.innerHTML = videos.map(item => {
-        const isCurrent = currentActiveVideoId === item.id;
-        return `
-          <div class="yt-card ${isCurrent ? 'active' : ''}" data-video-id="${item.id}">
-            <div class="yt-card-thumb-wrap" onclick="window.playCatalogVideo('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')">
-              <img class="yt-card-thumb" src="https://img.youtube.com/vi/${item.id}/hqdefault.jpg" alt="${escapeHtml(item.title)}" loading="lazy">
-              <span class="yt-card-duration">${escapeHtml(item.duration)}</span>
-              <div class="yt-card-play-overlay">
-                <span class="yt-card-play-icon">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                    <polygon points="6 4 20 12 6 20 6 4"></polygon>
-                  </svg>
-                </span>
-              </div>
-            </div>
-            <div class="yt-card-body">
-              <div class="yt-card-title" onclick="window.playCatalogVideo('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')" title="${escapeHtml(item.title)}">
-                ${escapeHtml(item.title)}
-              </div>
-              <div class="yt-card-channel">${escapeHtml(item.channel)} &bull; ${escapeHtml(item.category)}</div>
-              <div class="yt-card-footer">
-                <button type="button" class="yt-card-btn-watch" onclick="window.playCatalogVideo('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg>
-                  <span>${escapeHtml(t("youtubePlayNow") || "Смотреть")}</span>
-                </button>
-                <button type="button" class="yt-card-btn-save" onclick="window.saveCatalogVideoToGallery('${item.id}', '${escapeHtml(item.title).replace(/'/g, "\\'")}')" title="${escapeHtml(t("saveToGalleryBtn"))}">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                  <span>${escapeHtml(t("youtubeSaveSearchBtn") || "+ В галерею")}</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        `;
-      }).join("");
-    }
+    // Alias for backward compatibility
+    window.executeYouTubeSearch = window.searchYouTube;
 
     window.playCatalogVideo = function(id, title) {
       currentActiveVideoId = id;
       currentActiveVideoTitle = title || `YouTube Video (${id})`;
       const searchInput = document.getElementById("youtube-search-input");
-      if (searchInput) searchInput.value = `https://www.youtube.com/watch?v=${id}`;
-      window.executeYouTubeSearch(`https://www.youtube.com/watch?v=${id}`, true, currentActiveVideoTitle);
+      if (searchInput) searchInput.value = `https://youtube.com/watch?v=${id}`;
+      window.searchYouTube(`https://youtube.com/watch?v=${id}`, true, currentActiveVideoTitle);
     };
 
     window.saveCatalogVideoToGallery = function(id, title) {
@@ -5097,7 +5098,7 @@
         isYouTube: true,
         youtubeId: id,
         title: cleanTitle,
-        url: `https://www.youtube.com/watch?v=${id}`,
+        url: `https://youtube.com/watch?v=${id}`,
         poster: `https://img.youtube.com/vi/${id}/hqdefault.jpg`,
         description: "Embedded YouTube video stream playable directly on site without leaving the page.",
         tag: "YouTube",
@@ -5129,11 +5130,11 @@
         document.body.style.overflow = "hidden";
       }
       if (initialUrlOrId) {
-        window.executeYouTubeSearch(initialUrlOrId, true);
+        window.searchYouTube(initialUrlOrId, true);
       } else {
         const searchInput = document.getElementById("youtube-search-input");
         const val = searchInput?.value.trim() || "музыка хиты";
-        window.executeYouTubeSearch(val, false);
+        window.searchYouTube(val, false);
       }
     };
 
@@ -5144,14 +5145,14 @@
         document.body.style.overflow = "";
       }
       // Stop iframe video playback
-      const iframe = document.getElementById("youtube-iframe");
+      const iframe = document.querySelector("#youtube-results-container iframe") || document.getElementById("youtube-iframe");
       if (iframe) {
         iframe.src = "about:blank";
       }
     };
 
     window.playYouTubeVideo = function(urlOrId) {
-      window.executeYouTubeSearch(urlOrId, true);
+      window.searchYouTube(urlOrId, true);
     };
 
     window.saveYouTubeToGallery = function(urlOrId) {
@@ -6855,13 +6856,13 @@
 
       ytSearchBtn?.addEventListener("click", () => {
         const query = ytSearchInput?.value || "";
-        window.executeYouTubeSearch(query, true);
+        window.searchYouTube(query, true);
       });
 
       ytSearchInput?.addEventListener("keydown", (e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          window.executeYouTubeSearch(e.target.value, true);
+          window.searchYouTube(e.target.value, true);
         }
       });
 
@@ -6877,7 +6878,7 @@
           ytSearchInput.focus();
         }
         if (ytClearBtn) ytClearBtn.style.display = "none";
-        window.executeYouTubeSearch("", false);
+        window.searchYouTube("", false);
       });
 
       ytSaveBtn?.addEventListener("click", () => {
@@ -6888,7 +6889,7 @@
       document.querySelectorAll("#youtube-category-chips button").forEach(btn => {
         btn.addEventListener("click", () => {
           const query = btn.getAttribute("data-yt-search") || "";
-          window.executeYouTubeSearch(query, true);
+          window.searchYouTube(query, true);
         });
       });
 

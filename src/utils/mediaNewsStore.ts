@@ -796,14 +796,14 @@ export function getYouTubeSearchEmbedUrl(queryOrUrl: string): {
   const parsed = parseYouTubeUrl(trimmed);
   if (parsed.isYouTube && parsed.videoId) {
     return {
-      url: `https://www.youtube-nocookie.com/embed/${parsed.videoId}?autoplay=1&rel=0`,
+      url: `https://youtube.com/embed/${parsed.videoId}?autoplay=1&rel=0`,
       isDirectVideo: true,
       videoId: parsed.videoId,
     };
   }
   // Search query list embed
   return {
-    url: `https://www.youtube-nocookie.com/embed?listType=search&list=${encodeURIComponent(trimmed)}&autoplay=1&rel=0`,
+    url: `https://youtube.com/embed?listType=search&list=${encodeURIComponent(trimmed)}&autoplay=1&rel=0`,
     isDirectVideo: false,
   };
 }
